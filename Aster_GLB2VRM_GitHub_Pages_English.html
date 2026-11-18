@@ -1,0 +1,478 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#f4f6ff">
+<title>Aster VRM Workshop v8.7 — GLB/FBX to VRM 0.x</title>
+<style>
+:root{--ink:#172554;--muted:#64748b;--line:#dbe4ff;--blue:#3978f6;--violet:#8058f6;--bg:#f5f7ff;--card:#fff;--good:#0f9f83;--warn:#a16207}
+*{box-sizing:border-box}body{margin:0;background:linear-gradient(140deg,#f6f7ff,#eef8ff);font:15px system-ui,-apple-system,Segoe UI,Roboto,sans-serif;color:var(--ink)}
+header{padding:22px 16px 16px;max-width:1200px;margin:auto}h1{margin:0;font-size:clamp(24px,5vw,38px);line-height:1.1}header p{color:var(--muted);margin:10px 0 0;max-width:760px;line-height:1.5}
+main{max-width:1200px;margin:auto;padding:0 12px 28px;display:grid;gap:12px;grid-template-columns:repeat(12,minmax(0,1fr))}
+.card{background:var(--card);border:1px solid var(--line);border-radius:17px;padding:15px;box-shadow:0 8px 25px #324c8410;min-width:0}
+.upload{grid-column:span 4}.preview{grid-column:span 8}.mapping{grid-column:span 7}.shapes{grid-column:span 5}.status{grid-column:span 12}
+h2{font-size:17px;margin:0 0 12px}h3{font-size:14px;margin:16px 0 8px}
+.drop{border:1.5px dashed #9bb7ff;background:#f8faff;border-radius:13px;padding:19px 12px;text-align:center}
+input[type=file]{max-width:100%;font-size:13px}.small{font-size:12px;color:var(--muted);line-height:1.5}.pill{display:inline-block;border-radius:99px;padding:4px 9px;background:#edf2ff;color:#3159bb;font-size:12px;font-weight:700}
+button,select,input[type=text]{font:inherit}button{border:0;border-radius:11px;background:linear-gradient(100deg,var(--blue),var(--violet));color:white;font-weight:700;padding:11px 14px;cursor:pointer}button:disabled{opacity:.45;cursor:not-allowed}.secondary{background:#edf2ff;color:#2449a1}.danger{background:#fff4e6;color:#92400e}
+#viewport{height:330px;border-radius:13px;background:radial-gradient(ellipse at 50% 35%,#33435d,#101827);overflow:hidden;position:relative}
+#viewport canvas{display:block;width:100%;height:100%}.overlay{position:absolute;left:12px;top:12px;color:#e2e8f0;font-size:12px;background:#111827aa;padding:6px 9px;border-radius:8px;pointer-events:none}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.row>*{min-width:0}.between{justify-content:space-between}
+.mapping-list{display:grid;gap:8px}.maprow{display:grid;grid-template-columns:minmax(100px,1fr) minmax(120px,1.2fr);gap:8px;align-items:center;padding:7px;background:#f7f9ff;border:1px solid #e6ecff;border-radius:9px}
+.maprow label{font-size:13px;font-weight:650}.maprow select{width:100%;padding:8px;border:1px solid #d5def7;border-radius:8px;background:white;color:#172554;font-size:13px}
+.list{max-height:240px;overflow:auto;border:1px solid #e5eaf7;border-radius:10px;padding:8px}.item{font-size:12px;padding:5px 2px;border-bottom:1px solid #edf0f8;overflow-wrap:anywhere}.item:last-child{border:0}
+.notice{padding:11px 12px;border-radius:11px;background:#fff8e8;color:#854d0e;font-size:13px;line-height:1.5;border:1px solid #f5dfad}
+.success{background:#eafaf5;color:#086c5c;border-color:#bcebdd}.error{background:#fff0f0;color:#9f1239;border-color:#fecdd3}
+#log{white-space:pre-wrap;font-size:12px;color:#334155;line-height:1.55;max-height:160px;overflow:auto}
+footer{max-width:1200px;margin:auto;padding:0 16px 28px;color:var(--muted);font-size:12px}
+@media(max-width:760px){.upload,.preview,.mapping,.shapes{grid-column:span 12}#viewport{height:290px}.card{padding:13px}.maprow{grid-template-columns:100px minmax(0,1fr)}}
+</style>
+<script type="importmap">
+{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/","@pixiv/three-vrm":"https://cdn.jsdelivr.net/npm/@pixiv/three-vrm@3/lib/three-vrm.module.min.js"}}
+</script>
+</head>
+<body>
+<header>
+  <div class="pill">UPGRADED BUILD · SMART AUTO-MAPPING + POSE + MATERIAL COLOR</div>
+  <h1>VRM Workshop <span style="color:#765cf6">/ v8.7 Export + Mesh + Meta</span></h1>
+  <p>Import GLB/GLTF or FBX models, detect Japanese/English bone names, map humanoid bones and fingers, preview the skeleton, and inspect morph targets and texture information. Models are processed locally in your browser; 3D libraries are loaded from a CDN.</p>
+</header>
+<main>
+<section class="card upload">
+  <h2>1. Import Model</h2>
+  <div class="drop">
+    <div style="font-size:28px">⬆</div>
+    <strong>Choose model files</strong><br><span class="small">GLB · GLTF · FBX</span><br><br>
+    <input id="file" type="file" multiple accept=".glb,.gltf,.fbx,.bin,.png,.jpg,.jpeg,.webp">
+  </div>
+  <p class="small">For GLTF, select the accompanying .bin and texture files together, or preserve their relative paths when hosting the files on a server. GLB is the simplest option.</p>
+  <div class="row">
+    <button id="analyze" disabled>Analyze Bones</button>
+    <button id="reset" class="secondary">Clear Model</button>
+  </div>
+  <h3>Output Settings</h3>
+  <label class="small" for="version">Target Output Format</label>
+  <select id="version" style="width:100%;padding:10px;border:1px solid var(--line);border-radius:9px;margin:5px 0 10px">
+    <option>VRM 0.x</option>
+  </select>
+  <div class="notice">This build creates a VRM 0.x extension and validates its structure before download. It does not claim to be UniVRM/UniGLTF. Secondary physics is exported only when configured data is available; no spring bones or colliders are fabricated.</div>
+  <h3>Export Log</h3><div id="log" class="notice" style="white-space:pre-wrap;max-height:220px;overflow:auto">Ready. Import a model to begin.</div><div id="downloadReady" class="notice success" style="display:none;margin-top:10px"><strong>Your VRM file is ready.</strong><p class="small">If Chrome does not start the download automatically, tap the download link below.</p><a id="downloadLink" href="#" download="avatar_VRM0.vrm" style="display:inline-block;padding:12px 16px;background:#245eea;color:white;border-radius:10px;text-decoration:none;font-weight:700">Download VRM 0.x</a><p id="downloadInfo" class="small" style="margin-top:8px"></p></div>
+  <h3>Avatar / VRM Information</h3>
+  <label class="small" for="avatarName">Avatar / Model Name</label><input id="avatarName" type="text" placeholder="e.g. Hela Requiem" style="width:100%;padding:10px;border:1px solid var(--line);border-radius:9px;margin:5px 0 8px">
+  <label class="small" for="avatarAuthor">Author / Tác giả</label><input id="avatarAuthor" type="text" placeholder="Author name" style="width:100%;padding:10px;border:1px solid var(--line);border-radius:9px;margin:5px 0 8px">
+  <label class="small" for="thumbnailFile">Thumbnail (PNG, JPG; max 2 MB)</label><input id="thumbnailFile" type="file" accept="image/png,image/jpeg" style="width:100%;margin:5px 0 8px"><div id="thumbnailPreview" class="small">No thumbnail selected.</div>
+  <h3>Materials & Textures</h3>
+  <label class="small" for="alphaMode">Alpha Mode / Mesh</label><select id="alphaMode" style="width:100%;padding:10px;border:1px solid var(--line);border-radius:9px;margin:5px 0 8px"><option value="keep">Keep Original</option><option value="opaque">Opaque</option><option value="mask">Alpha Mask</option><option value="blend">Alpha Blend</option></select>
+  <label class="small" for="shaderMode">Shader mode</label><select id="shaderMode" style="width:100%;padding:10px;border:1px solid var(--line);border-radius:9px;margin:5px 0 8px"><option value="keep">Keep Current Material</option><option value="unlit">Unlit (MeshBasicMaterial)</option><option value="lit">Lit (MeshStandardMaterial)</option></select>
+  <label class="small" for="textureTarget">Mesh / Material to Edit</label><select id="textureTarget" style="width:100%;padding:10px;border:1px solid var(--line);border-radius:9px;margin:5px 0 8px"><option value="">Import a model trước</option></select>
+  <label class="small" for="materialColor">Material Color (applies to the selected material)</label><div class="row" style="margin:5px 0 8px"><input id="materialColor" type="color" value="#ffffff" style="width:58px;height:42px;padding:3px;border:1px solid var(--line);border-radius:8px"><input id="materialColorHex" type="text" value="#ffffff" maxlength="7" placeholder="#ffffff" style="width:105px;padding:9px;border:1px solid var(--line);border-radius:8px"><button id="applyColor" class="secondary" disabled>Apply Color</button></div>
+  <label class="small" for="textureFile">Add / Replace Texture (PNG, JPG, WebP)</label><input id="textureFile" type="file" accept="image/png,image/jpeg,image/webp" style="width:100%;margin:5px 0 8px">
+  <button id="applyMaterial" class="secondary" disabled>Apply Alpha / Shader</button><button id="applyTexture" class="secondary" disabled>Apply Texture to Selected Mesh</button>
+  <p class="small">Textures display correctly only when the mesh has a suitable UV map. If the model is missing its original images, select the correct texture file; this tool cannot recreate missing original textures. Unlit/Alpha settings are applied to the preview and exported file, but the resulting VRM 0.x should still be checked in your target application.</p>
+</section>
+<section class="card preview">
+  <div class="row between"><h2>2. Model Preview</h2><span class="pill" id="modelState">No model loaded</span></div>
+  <div id="viewport"><div class="overlay">Rotate: drag · Zoom: pinch / scroll</div></div>
+  <div class="row" style="margin-top:10px">
+    <button id="frame" class="secondary" disabled>Frame Model</button>
+    <button id="wire" class="secondary" disabled>Wireframe</button>
+    <button id="downloadReport" class="secondary" disabled>Download Mapping Report (JSON)</button>
+    <button id="exportVrm" disabled>Download VRM 0.x</button>
+    <button id="autoTPose" class="secondary" disabled>Auto T-Pose (A-Pose → T-Pose)</button>
+    
+    <button id="resetPose" class="secondary" disabled>Restore Original Pose</button>
+  </div>
+  <h3>Model Rotation</h3>
+  <div class="row">
+    <label class="small">X <input id="rotX" type="number" min="-360" max="360" value="0" style="width:72px;padding:7px;border:1px solid var(--line);border-radius:8px"> °</label>
+    <label class="small">Y <input id="rotY" type="number" min="-360" max="360" value="0" style="width:72px;padding:7px;border:1px solid var(--line);border-radius:8px"> °</label>
+    <label class="small">Z <input id="rotZ" type="number" min="-360" max="360" value="0" style="width:72px;padding:7px;border:1px solid var(--line);border-radius:8px"> °</label>
+    <button id="rotate180" class="secondary" disabled>Rotate 180° (Y)</button>
+    <button id="resetRot" class="secondary" disabled>Reset Rotation</button>
+  </div>
+  <p class="small">Rotation is applied to the model root and included in the exported file. A 180° rotation around the Y axis is common, but check the model’s forward-facing direction in your target application.</p>
+  <h3>Model Scale</h3>
+  <div class="row"><label class="small">Uniform Scale <input id="modelScale" type="number" min="0.01" max="100" step="0.01" value="1" style="width:90px;padding:7px;border:1px solid var(--line);border-radius:8px"></label><button id="resetScale" class="secondary" disabled>Reset Scale</button></div>
+  <p class="small">Scale is applied to the model root and included in the exported VRM. Use uniform scaling to avoid distorting the character’s proportions.</p>
+  <h3>Remove Meshes</h3><div class="row"><select id="meshDeleteTarget" style="flex:1;min-width:180px;padding:9px;border:1px solid var(--line);border-radius:8px"><option value="">Import a model trước</option></select><button id="deleteMesh" class="danger" disabled>Delete Selected Mesh</button></div>
+  <p class="small">Deleting a mesh removes it from both the preview and the exported file. This cannot be undone; re-import the original model to restore it.</p>
+  <div class="notice">Auto T-Pose is intended only for models in an A-pose. If the model uses another custom pose, adjust it manually or restore the original pose. This is not a general-purpose pose converter.</div>
+</section>
+<section class="card mapping">
+  <div class="row between"><h2>3. Auto Bone Mapping</h2><span class="pill" id="boneCount">0 bones</span></div><div class="row" style="margin:8px 0 12px"><button id="runAutoMapping" type="button">Run Auto Mapping</button><button id="clearMapping" class="secondary" type="button">Clear Mapping</button></div>
+  <p class="small">Mapping supports English/MMD names, detects R/L side markers even inside names, and normalizes full-width digits. Large numeric suffixes (_3…_12) are not automatically selected as finger segments. Standard unsuffixed names are preferred, followed by _1 when no standard name exists. Always review suggested bones.</p>
+  <div id="mapping" class="mapping-list"><div class="small">Import a model rồi nhấn “Analyze Bones”.</div></div>
+</section>
+<section class="card shapes">
+  <div class="row between"><h2>4. Morph Targets / Blendshapes</h2><span class="pill" id="shapeCount">0</span></div>
+  <p class="small">Morph targets được chuyển thành BlendShape Groups và bindings theo mesh/node, nếu GLTFExporter giữ được target data.</p>
+  <div id="shapes" class="list"><div class="small">Not analyzed yet.</div></div>
+  <h3>Quick Checks</h3>
+  <div id="checks" class="small">No results yet.</div>
+</section>
+<section class="card" id="secondaryPanel">
+  <h2>5. Secondary Bone Groups & Collider Groups</h2>
+  <p class="small">Configure VRM 0.x SpringBones. Select a root bone; its descendant bones will be added to the group. Colliders are attached to the selected node.</p>
+  <h3>Add Secondary Bone Group</h3>
+  <label class="small">SpringBone Root</label><select id="springRoot" style="width:100%;padding:10px;margin:5px 0"></select>
+  <div class="row"><label class="small">Stiffness <input id="springStiff" type="number" value="1" min="0" step="0.1" style="width:75px"></label><label class="small">Drag <input id="springDrag" type="number" value="0.4" min="0" max="1" step="0.05" style="width:75px"></label><label class="small">Hit Radius <input id="springRadius" type="number" value="0.02" min="0" step="0.005" style="width:75px"></label></div>
+  <button id="addSpring" type="button" class="secondary">+ Add Secondary Bone Group</button><div id="springList" class="small">No groups added.</div>
+  <h3>Add Collider Group</h3>
+  <label class="small">Collider Node</label><select id="colliderNode" style="width:100%;padding:10px;margin:5px 0"></select>
+  <div class="row"><label class="small">Offset X <input id="colX" type="number" value="0" step="0.01" style="width:65px"></label><label class="small">Y <input id="colY" type="number" value="0" step="0.01" style="width:65px"></label><label class="small">Z <input id="colZ" type="number" value="0" step="0.01" style="width:65px"></label><label class="small">Radius <input id="colR" type="number" value="0.08" min="0.001" step="0.01" style="width:70px"></label></div>
+  <button id="addCollider" type="button" class="secondary">+ Add Collider Group</button><div id="colliderList" class="small">No colliders added.</div>
+</section>
+<section class="card" id="validatorPanel"><h2>6. VRM Structure Validator</h2><button id="runValidator" class="secondary" type="button" disabled>Validate VRM Structure Before Download</button><div id="validatorResult" class="small">Not yet chạy kiểm tra.</div></section>
+
+</main>
+<footer>Privacy: this application does not upload model files to a server. JavaScript libraries are loaded from a CDN. Use an up-to-date browser and open the page over HTTPS or localhost for reliable JavaScript module support.</footer>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { FBXLoader } from 'three/addons/loaders/FBXLoader.js';
+import { GLTFExporter } from 'three/addons/exporters/GLTFExporter.js';
+
+const $ = id => document.getElementById(id);
+const viewport = $('viewport');
+let scene, camera, renderer, controls, currentRoot=null, currentFile=null, bones=[], morphs=[], wire=false, mapping={}, chosenFiles=[], poseSnapshot=null;
+let configuredSpringGroups=[], configuredColliderGroups=[], thumbnailDataUrl=null, thumbnailMime=null;
+function populatePhysicsNodeSelects(){const nodes=bones||[];for(const id of ['springRoot','colliderNode']){const el=$(id);if(!el)return;el.innerHTML='';nodes.forEach((b,i)=>el.add(new Option((b.name||'Bone_'+i)+' ['+i+']',b.uuid)));}}
+function descendantsBoneNames(root){const names=[];root.traverse(o=>{if(o.isBone)names.push(o.name)});return names;}
+function renderPhysicsLists(){const a=$('springList'),b=$('colliderList');if(a)a.textContent=configuredSpringGroups.length?configuredSpringGroups.map((g,i)=>`${i+1}. ${g.label} — ${g.boneNames.length} bones`).join('\n'):'No groups added.';if(b)b.textContent=configuredColliderGroups.length?configuredColliderGroups.map((g,i)=>`${i+1}. ${g.label} — radius ${g.radius}`).join('\n'):'No colliders added.';}
+
+const humanoid = [
+['hips',['hips','pelvis','root','hip','center','センター']],['spine',['spine','spine1','spine_01']],['chest',['chest','spine2','spine_02']],
+['upperChest',['upperchest','spine3','spine_03']],['neck',['neck']],['head',['head']],
+['leftEye',['lefteye','eye_l','eyeleft']],['rightEye',['righteye','eye_r','eyeright']],
+['jaw',['jaw','mandible']],['leftShoulder',['leftshoulder','shoulder_l','l_shoulder','clavicle_l','左肩']],
+['leftUpperArm',['leftupperarm','upperarm_l','leftarm','arm_l','l_upperarm','左腕']],['leftLowerArm',['leftlowerarm','lowerarm_l','leftforearm','forearm_l','l_forearm','左ひじ','左肘']],
+['leftHand',['lefthand','hand_l','wrist_l','左手首']],['rightShoulder',['rightshoulder','shoulder_r','r_shoulder','clavicle_r','右肩']],
+['rightUpperArm',['rightupperarm','upperarm_r','rightarm','arm_r','r_upperarm','右腕']],['rightLowerArm',['rightlowerarm','lowerarm_r','rightforearm','forearm_r','r_forearm','右ひじ','右肘']],
+['rightHand',['righthand','hand_r','wrist_r','右手首']],['leftUpperLeg',['leftupperleg','thigh_l','upleg_l','leftthigh','l_thigh','upperlegl','leglupper','左足']],
+['leftLowerLeg',['leftlowerleg','calf_l','leg_l','leftshin','l_calf','lowerlegl','legllower','左ひざ','左膝']],['leftFoot',['leftfoot','foot_l','ankle_l','左足首']],
+['leftToes',['lefttoes','toes_l','toe_l','左つま先']],['rightUpperLeg',['rightupperleg','thigh_r','upleg_r','rightthigh','r_thigh','upperlegr','legrupper','右足']],
+['rightLowerLeg',['rightlowerleg','calf_r','leg_r','rightshin','r_calf','lowerlegr','legrlower','右ひざ','右膝']],['rightFoot',['rightfoot','foot_r','ankle_r','右足首']],
+['rightToes',['righttoes','toes_r','toe_r','右つま先']],
+ ['leftThumbProximal',['leftthumbProximal','左親指０','左親指0']],
+ ['leftThumbIntermediate',['leftthumbIntermediate','左親指１','左親指1']],
+ ['leftThumbDistal',['leftthumbDistal','左親指２','左親指2']],
+ ['leftIndexProximal',['leftindexProximal','leftforefingerProximal','左人指０','左人指1']],
+ ['leftIndexIntermediate',['leftindexIntermediate','leftforefingerIntermediate','左人指１','左人指2']],
+ ['leftIndexDistal',['leftindexDistal','leftforefingerDistal','左人指２','左人指3']],
+ ['leftMiddleProximal',['leftmiddleProximal','左中指０','左中指1']],
+ ['leftMiddleIntermediate',['leftmiddleIntermediate','左中指１','左中指2']],
+ ['leftMiddleDistal',['leftmiddleDistal','左中指２','左中指3']],
+ ['leftRingProximal',['leftringProximal','左薬指０','左薬指1']],
+ ['leftRingIntermediate',['leftringIntermediate','左薬指１','左薬指2']],
+ ['leftRingDistal',['leftringDistal','左薬指２','左薬指3']],
+ ['leftLittleProximal',['leftlittleProximal','leftpinkyProximal','左小指０','左小指1']],
+ ['leftLittleIntermediate',['leftlittleIntermediate','leftpinkyIntermediate','左小指１','左小指2']],
+ ['leftLittleDistal',['leftlittleDistal','leftpinkyDistal','左小指２','左小指3']],
+ ['rightThumbProximal',['rightthumbProximal','右親指０','右親指0']],
+ ['rightThumbIntermediate',['rightthumbIntermediate','右親指１','右親指1']],
+ ['rightThumbDistal',['rightthumbDistal','右親指２','右親指2']],
+ ['rightIndexProximal',['rightindexProximal','rightforefingerProximal','右人指０','右人指1']],
+ ['rightIndexIntermediate',['rightindexIntermediate','rightforefingerIntermediate','右人指１','右人指2']],
+ ['rightIndexDistal',['rightindexDistal','rightforefingerDistal','右人指２','右人指3']],
+ ['rightMiddleProximal',['rightmiddleProximal','右中指０','右中指1']],
+ ['rightMiddleIntermediate',['rightmiddleIntermediate','右中指１','右中指2']],
+ ['rightMiddleDistal',['rightmiddleDistal','右中指２','右中指3']],
+ ['rightRingProximal',['rightringProximal','右薬指０','右薬指1']],
+ ['rightRingIntermediate',['rightringIntermediate','右薬指１','右薬指2']],
+ ['rightRingDistal',['rightringDistal','右薬指２','右薬指3']],
+ ['rightLittleProximal',['rightlittleProximal','rightpinkyProximal','右小指０','右小指1']],
+ ['rightLittleIntermediate',['rightlittleIntermediate','rightpinkyIntermediate','右小指１','右小指2']],
+ ['rightLittleDistal',['rightlittleDistal','rightpinkyDistal','右小指２','右小指3']]
+];
+function norm(s){
+ let raw=String(s||'').toLowerCase().replace(/[０-９]/g,d=>String.fromCharCode(d.charCodeAt(0)-0xFEE0));
+ raw=raw.replace(/^(mixamorig[:_\-]?|armature[:_\-]?|skeleton[:_\-]?|bip001[:_\-]?|bip01[:_\-]?|bone[:_\-]?)/i,'');
+ const hasJapaneseSide=/[左右]/.test(raw);
+ // Translate MMD side/finger words before punctuation cleanup.
+ raw=raw.replace(/左ひじ|左肘/g,' left elbow ').replace(/右ひじ|右肘/g,' right elbow ')
+  .replace(/左手首/g,' left hand ').replace(/右手首/g,' right hand ')
+  .replace(/左つま先/g,' left toes ').replace(/右つま先/g,' right toes ')
+  .replace(/左足首/g,' left foot ').replace(/右足首/g,' right foot ')
+  .replace(/左ひざ|左膝/g,' left knee ').replace(/右ひざ|右膝/g,' right knee ')
+  .replace(/左/g,' left ').replace(/右/g,' right ')
+  .replace(/親指/g,' thumb ').replace(/人指|人差指/g,' index ').replace(/中指/g,' middle ').replace(/薬指/g,' ring ').replace(/小指/g,' little ')
+  .replace(/上半身３?/g,' spine ').replace(/下半身/g,' hips ').replace(/つま先/g,' toes ').replace(/足首/g,' foot ').replace(/ひざ|膝/g,' knee ');
+ raw=raw.replace(/upperarm/g,' upper arm ').replace(/lowerarm/g,' lower arm ').replace(/forearm/g,' forearm ')
+  .replace(/upperleg|thigh/g,' upper leg ').replace(/lowerleg|calf|shin/g,' lower leg ').replace(/wrist/g,' hand ').replace(/ankle/g,' foot ');
+ // Reorder explicit side markers so UpperArm_R_1 and IndexProximal_R_1
+ // become rightupperarm / rightindexproximal. Keep MMD finger digit suffixes.
+ let side='';
+ const sideMatch=raw.match(/(?:^|[_\-.\s])(left|right|l|r)(?=$|[_\-.\s])/i);
+ if(sideMatch){side=/^(l|left)$/i.test(sideMatch[1])?'left':'right';raw=raw.replace(sideMatch[0],' ');if(!hasJapaneseSide)raw=raw.replace(/[_\-.\s]*\d+\s*$/,'');}
+ raw=raw.replace(/\b(left|right)\b/g,' ');
+ raw=raw.replace(/[^a-z0-9]/g,'');
+ return side+raw;
+}
+function score(name, aliases, target){
+ const n=norm(name);let best=0;
+ for(const a of aliases){const x=norm(a);if(!x)continue;
+  if(n===x){best=Math.max(best,180);continue;}
+  // Allow known rig prefixes/namespace remnants, but avoid broad substring matches.
+  if(n.endsWith(x)||n.startsWith(x))best=Math.max(best,75);
+ }
+ const raw=String(name||'');
+ if(/(?:tip|end|dummy|helper|socket|weapon|先)/i.test(raw))return 0;
+ if(/^root$/i.test(raw)&&target!=='hips')return 0;
+ if(target==='hips'&&/^(root|center)$/i.test(raw))best=Math.min(best,58);
+ return best;
+}
+
+function init3d(){
+ scene=new THREE.Scene(); scene.background=new THREE.Color(0x111827);
+ camera=new THREE.PerspectiveCamera(45,viewport.clientWidth/viewport.clientHeight,.01,10000); camera.position.set(0,1.5,4);
+ renderer=new THREE.WebGLRenderer({antialias:true,alpha:false}); renderer.setPixelRatio(Math.min(devicePixelRatio,2)); renderer.setSize(viewport.clientWidth,viewport.clientHeight); viewport.appendChild(renderer.domElement);
+ scene.add(new THREE.HemisphereLight(0xffffff,0x536078,2));
+ const key=new THREE.DirectionalLight(0xffffff,2); key.position.set(3,5,4);scene.add(key);
+ controls=new OrbitControls(camera,renderer.domElement);controls.target.set(0,1,0);controls.update();
+ const grid=new THREE.GridHelper(10,20,0x52627c,0x29364b);scene.add(grid);
+ function animate(){requestAnimationFrame(animate);controls.update();renderer.render(scene,camera)}animate();
+ new ResizeObserver(()=>{if(!renderer)return;camera.aspect=viewport.clientWidth/viewport.clientHeight;camera.updateProjectionMatrix();renderer.setSize(viewport.clientWidth,viewport.clientHeight)}).observe(viewport);
+}
+init3d();
+function log(s){const el=$('log');if(!el)return;const stamp=new Date().toLocaleTimeString();el.textContent=(el.textContent==='Ready. Import a model to begin.'?'':el.textContent+'\n')+'['+stamp+'] '+String(s);el.scrollTop=el.scrollHeight;}
+function disposeRoot(){if(window.__asterVrmObjectUrl){URL.revokeObjectURL(window.__asterVrmObjectUrl);window.__asterVrmObjectUrl=null}if($('downloadReady'))$('downloadReady').style.display='none';if(!currentRoot)return;scene.remove(currentRoot);currentRoot.traverse(o=>{if(o.geometry)o.geometry.dispose(); if(o.material){for(const m of (Array.isArray(o.material)?o.material:[o.material]))m.dispose()}});currentRoot=null}
+function frameRoot(root){
+ const box=new THREE.Box3().setFromObject(root);if(box.isEmpty())return;
+ const size=box.getSize(new THREE.Vector3()), center=box.getCenter(new THREE.Vector3());
+ controls.target.copy(center); const max=Math.max(size.x,size.y,size.z)||1;
+ camera.position.set(center.x,center.y+size.y*.15,center.z+max*1.8);camera.near=Math.max(max/1000,.001);camera.far=max*100;camera.updateProjectionMatrix();controls.update();
+}
+function gather(root){
+ bones=[];morphs=[];
+ root.traverse(o=>{
+  if(o.isBone)bones.push(o);
+  if(o.isMesh&&o.morphTargetDictionary)for(const name of Object.keys(o.morphTargetDictionary))morphs.push({mesh:o.name||'(unnamed mesh)',name});
+ });
+}
+function autoMap(){
+ mapping={}; const used=new Set();
+ const coreOrder=['hips','spine','chest','upperChest','neck','head','leftUpperArm','leftLowerArm','leftHand','rightUpperArm','rightLowerArm','rightHand','leftUpperLeg','leftLowerLeg','leftFoot','rightUpperLeg','rightLowerLeg','rightFoot'];
+ const ordered=[...humanoid].sort((a,b)=>coreOrder.indexOf(a[0])<0?1:coreOrder.indexOf(b[0])<0?-1:coreOrder.indexOf(a[0])-coreOrder.indexOf(b[0]));
+ for(const [target,aliases] of ordered){
+  let best=null,bestScore=0;
+  for(const b of bones){if(used.has(b.uuid))continue;const sc=score(b.name,aliases,target);if(sc>bestScore){best=b;bestScore=sc}}
+  const isFinger=/Thumb|Index|Middle|Ring|Little/.test(target);
+  const minScore=isFinger?100:target==='hips'?55:60;
+  if(best&&bestScore>=minScore){mapping[target]=best.uuid;used.add(best.uuid)}else mapping[target]='';
+ }
+ renderMapping();
+ const mapped=Object.values(mapping).filter(Boolean).length;
+ log(`Auto Mapping: ${mapped}/${humanoid.length} slots. Tên Finger01 dạng số chung không được tự gán khi chưa xác định được ngón/tay/đốt, nhằm tránh mapping sai. Please kiểm tra các ô chưa gán.`);
+}
+function renderMapping(){
+ const el=$('mapping');el.innerHTML='';
+ for(const [target] of humanoid){
+  const row=document.createElement('div');row.className='maprow';
+  const label=document.createElement('label');label.textContent=target;
+  const select=document.createElement('select');select.dataset.target=target;
+  const none=document.createElement('option');none.value='';none.textContent='— Unassigned —';select.appendChild(none);
+  for(const b of bones){const op=document.createElement('option');op.value=b.uuid;op.textContent=b.name||'(unnamed bone)';select.appendChild(op)}
+  select.value=mapping[target]||'';select.addEventListener('change',()=>{mapping[target]=select.value});
+  row.append(label,select);el.appendChild(row);
+ }
+ const mapped=Object.values(mapping).filter(Boolean).length;
+ $('boneCount').textContent=`${bones.length} bones · ${mapped}/${humanoid.length} gợi ý`;
+}
+function renderShapes(){
+ const el=$('shapes');el.innerHTML='';
+ if(!morphs.length){el.textContent='No morph targets were found in the imported meshes.';return}
+ for(const m of morphs){const d=document.createElement('div');d.className='item';d.textContent=`${m.name}  —  ${m.mesh}`;el.appendChild(d)}
+}
+function refreshTextureTargets(){
+ const sel=$('textureTarget');if(!sel)return;const old=sel.value;sel.innerHTML='';
+ sel.add(new Option(currentRoot?'— Select mesh/material —':'Import a model trước',''));
+ if(currentRoot)currentRoot.traverse(o=>{if(!o.isMesh)return;const mats=Array.isArray(o.material)?o.material:[o.material];mats.forEach((m,i)=>{if(!m)return;const value=o.uuid+'|'+i;sel.add(new Option(`${o.name||'(unnamed mesh)'} — ${m.name||'Material '+(i+1)}`,value))})});
+ if([...sel.options].some(o=>o.value===old))sel.value=old;
+ $('applyColor').disabled=!sel.value;
+ if(sel.value)eachSelectedMaterial(mat=>{if(mat.color){const c='#'+mat.color.getHexString();$('materialColor').value=c;$('materialColorHex').value=c}});
+}
+function refreshMeshDeleteTargets(){const sel=$('meshDeleteTarget');if(!sel)return;sel.innerHTML='';if(!currentRoot){sel.add(new Option('Import a model trước',''));$('deleteMesh').disabled=true;return}let count=0;currentRoot.traverse(o=>{if(o.isMesh){sel.add(new Option((o.name||'(unnamed mesh)')+' · '+o.type,o.uuid));count++}});if(!count)sel.add(new Option('No meshes',''));$('deleteMesh').disabled=count===0;}
+function eachSelectedMaterial(fn){
+ const value=$('textureTarget').value;if(!value||!currentRoot)return false;const [uuid,indexText]=value.split('|');let found=false;
+ currentRoot.traverse(o=>{if(o.uuid!==uuid||!o.isMesh)return;const idx=Number(indexText);const mats=Array.isArray(o.material)?o.material:[o.material];if(mats[idx]){fn(mats[idx],o,idx);found=true}});return found;
+}
+function applyMaterialSettings(){if(!currentRoot)return;const alpha=$('alphaMode').value,shader=$('shaderMode').value;let count=0;
+ currentRoot.traverse(o=>{if(!o.isMesh)return;const oldMats=Array.isArray(o.material)?o.material:[o.material];const newMats=oldMats.map(m=>{if(!m)return m;let mat=m;
+ if(shader==='unlit'&&!m.isMeshBasicMaterial){mat=new THREE.MeshBasicMaterial().copy(m);mat.name=m.name;mat.userData={...m.userData};}
+ else if(shader==='lit'&&m.isMeshBasicMaterial){mat=new THREE.MeshStandardMaterial().copy(m);mat.name=m.name;mat.userData={...m.userData};}
+ if(alpha==='opaque'){mat.transparent=false;mat.opacity=1;mat.alphaTest=0;mat.depthWrite=true;mat.alphaHash=false}
+ else if(alpha==='mask'){mat.transparent=false;mat.opacity=1;mat.alphaTest=0.5;mat.depthWrite=true;mat.alphaHash=false}
+ else if(alpha==='blend'){mat.transparent=true;mat.depthWrite=false;mat.alphaTest=0;if(mat.opacity===1)mat.opacity=1}
+ mat.needsUpdate=true;count++;return mat;});o.material=Array.isArray(o.material)?newMats:newMats[0];});
+ updateChecks();refreshTextureTargets();log(`Applied Alpha/Shader settings to ${count} materials in the preview; the mesh/material list has been refreshed. Check hair and alpha edges.`);
+}
+$('textureTarget').addEventListener('change',()=>refreshTextureTargets());
+$('materialColor').addEventListener('input',()=>{$('materialColorHex').value=$('materialColor').value});
+$('materialColorHex').addEventListener('change',()=>{let v=$('materialColorHex').value.trim();if(!v.startsWith('#'))v='#'+v;if(/^#[0-9a-fA-F]{6}$/.test(v))$('materialColor').value=v.toLowerCase()});
+$('applyColor').addEventListener('click',()=>{const raw=$('materialColorHex').value.trim();const color=/^#[0-9a-fA-F]{6}$/.test(raw)?raw:$('materialColor').value;const ok=eachSelectedMaterial(mat=>{if(mat.color)mat.color.set(color);else log('The selected material does not have an editable color property.');mat.needsUpdate=true});if(ok){updateChecks();log('Changed the selected material color to '+color+'.')}else log('Import a model and select a mesh/material first.')});
+$('applyMaterial').addEventListener('click',applyMaterialSettings);
+$('applyTexture').addEventListener('click',async()=>{const file=$('textureFile').files?.[0];if(!file){log('Select a PNG/JPG/WebP texture file first.');return}if(!currentRoot){log('Import a model first.');return}try{const url=URL.createObjectURL(file);const tex=await new THREE.TextureLoader().loadAsync(url);tex.colorSpace=THREE.SRGBColorSpace;tex.flipY=false;tex.needsUpdate=true;let ok=eachSelectedMaterial((mat)=>{mat.map=tex;mat.needsUpdate=true});if(!ok){log('Select the mesh/material that should receive the texture first.');URL.revokeObjectURL(url);return}updateChecks();log(`Applied ${file.name} to the selected material. A suitable UV map is required; this does not repair UVs or generate textures.`)}catch(err){log('Không nạp được texture: '+(err.message||err))}});
+function updateChecks(){
+ const mapped=Object.values(mapping).filter(Boolean).length;
+ const meshCount=[];let skinned=0,meshes=0,materials=new Set(),textures=new Set(),images=new Set();
+ currentRoot?.traverse(o=>{if(o.isMesh){meshes++;if(o.isSkinnedMesh)skinned++;for(const m of (Array.isArray(o.material)?o.material:[o.material])){if(m){materials.add(m.uuid);for(const v of Object.values(m)){if(v&&v.isTexture)textures.add(v.uuid);}}}}});
+ $('checks').innerHTML=`<p>• Mesh: <b>${meshes}</b>; SkinnedMesh: <b>${skinned}</b></p><p>• Bone được dò: <b>${bones.length}</b></p><p>• Humanoid + ngón tay gợi ý: <b>${mapped}/${humanoid.length}</b></p><p>• Morph targets: <b>${morphs.length}</b></p><p>• Materials: <b>${materials.size}</b>; texture maps được phát hiện trong material: <b>${textures.size}</b></p><p>• Texture nhúng/ảnh GLB được nạp qua loader; cần kiểm tra trực quan alpha và vật liệu trong preview.</p><p>• Not yet tự chuyển shader sang MToon hoặc bảo đảm Virtual Droid tương thích.</p>`;
+}
+$('file').addEventListener('change',async e=>{
+ const all=Array.from(e.target.files||[]);if(!all.length)return;
+ chosenFiles=all;const file=all.find(f=>/\.(glb|gltf|fbx)$/i.test(f.name));
+ if(!file){log('No .glb, .gltf, or .fbx model file was found in your selection.');return}
+ currentFile=file;$('analyze').disabled=false;if(!$('avatarName').value.trim())$('avatarName').value=file.name.replace(/\.[^.]+$/,'');
+ const localAssets=new Map();
+ for(const f of all){localAssets.set(f.name.toLowerCase(),URL.createObjectURL(f));localAssets.set(f.name.split('/').pop().toLowerCase(),URL.createObjectURL(f));}
+ const manager=new THREE.LoadingManager();
+ manager.setURLModifier(url=>{
+  let decoded=url;try{decoded=decodeURIComponent(url)}catch{}
+  const base=decoded.split(/[?#]/)[0].split('/').pop().toLowerCase();
+  return localAssets.get(decoded.toLowerCase())||localAssets.get(base)||url;
+ });
+ try{
+  log(`Loading ${file.name} (${(file.size/1024/1024).toFixed(2)} MB)…`);
+  let root;const ext=file.name.split('.').pop().toLowerCase();
+  if(ext==='glb'||ext==='gltf'){
+   const loader=new GLTFLoader(manager);const buf=await file.arrayBuffer();
+   let result;
+   if(ext==='glb') result=await loader.parseAsync(buf,'');
+   else {
+    const txt=new TextDecoder().decode(buf);
+    result=await loader.parseAsync(txt,'');
+   }
+   root=result.scene||result.scenes?.[0];if(!root)throw new Error('No scene found in the GLTF file.');
+  }else{
+   const loader=new FBXLoader(manager);root=loader.parse(await file.arrayBuffer(),'');
+  }
+  disposeRoot();currentRoot=root;scene.add(root);
+  gather(root);autoMap();renderShapes();frameRoot(root);refreshTextureTargets();refreshMeshDeleteTargets();updateChecks();$('applyMaterial').disabled=false;$('applyTexture').disabled=false;
+  $('modelState').textContent=file.name;populatePhysicsNodeSelects();$('runValidator').disabled=false;$('frame').disabled=false;$('wire').disabled=false;$('downloadReport').disabled=false;$('exportVrm').disabled=false;$('rotate180').disabled=false;$('resetRot').disabled=false;$('resetScale').disabled=false;$('autoTPose').disabled=false;$('resetPose').disabled=false;
+  poseSnapshot=null;
+  $('rotX').value=Math.round(THREE.MathUtils.radToDeg(root.rotation.x));$('rotY').value=Math.round(THREE.MathUtils.radToDeg(root.rotation.y));$('rotZ').value=Math.round(THREE.MathUtils.radToDeg(root.rotation.z));
+  log(`Model imported: ${file.name}\nBone: ${bones.length}\nMorph targets: ${morphs.length}\nAdditional files selected: ${Math.max(0,all.length-1)}\nIf external textures are still missing, package the GLTF as a GLB before importing.`);
+ }catch(err){log(`Lỗi nạp model:\n${err.message||err}`);$('modelState').textContent='Import thất bại';}
+});
+function applyRotation(){if(!currentRoot)return;currentRoot.rotation.set(THREE.MathUtils.degToRad(Number($('rotX').value)||0),THREE.MathUtils.degToRad(Number($('rotY').value)||0),THREE.MathUtils.degToRad(Number($('rotZ').value)||0));currentRoot.updateMatrixWorld(true)}
+for(const id of ['rotX','rotY','rotZ'])$(id).addEventListener('change',applyRotation);
+$('rotate180').addEventListener('click',()=>{if(!currentRoot)return;$('rotY').value=(Number($('rotY').value)+180)%360;applyRotation()});
+$('resetRot').addEventListener('click',()=>{$('rotX').value=0;$('rotY').value=0;$('rotZ').value=0;applyRotation()});
+function applyScale(){if(!currentRoot)return;const v=THREE.MathUtils.clamp(Number($('modelScale').value)||1,0.01,100);$('modelScale').value=String(v);currentRoot.scale.setScalar(v);currentRoot.updateMatrixWorld(true)}
+$('modelScale').addEventListener('change',applyScale);$('resetScale').addEventListener('click',()=>{$('modelScale').value='1';applyScale()});
+$('deleteMesh').addEventListener('click',()=>{if(!currentRoot)return;const id=$('meshDeleteTarget').value;let target=null;currentRoot.traverse(o=>{if(o.uuid===id&&o.isMesh)target=o});if(!target){log('The selected mesh could not be found.');return}const name=target.name||'(unnamed mesh)';target.parent?.remove(target);gather(currentRoot);autoMap();renderShapes();refreshTextureTargets();refreshMeshDeleteTargets();updateChecks();log('Deleted mesh: '+name+'. This cannot be undone; re-import the original model if needed.');});
+$('thumbnailFile').addEventListener('change',async()=>{const f=$('thumbnailFile').files?.[0];thumbnailDataUrl=null;thumbnailMime=null;if(!f){$('thumbnailPreview').textContent='No thumbnail selected.';return}if(!/^image\/(png|jpeg)$/.test(f.type)){log('Thumbnails must be PNG or JPG for glTF/VRM compatibility.');$('thumbnailFile').value='';return}if(f.size>2*1024*1024){log('Thumbnail exceeds the 2 MB limit.');$('thumbnailFile').value='';return}try{thumbnailDataUrl=await new Promise((resolve,reject)=>{const r=new FileReader();r.onload=()=>resolve(String(r.result));r.onerror=()=>reject(r.error);r.readAsDataURL(f)});thumbnailMime=f.type;$('thumbnailPreview').textContent='Selected: '+f.name+' ('+Math.round(f.size/1024)+' KB). It will be embedded in the VRM metadata.';log('Loaded metadata thumbnail: '+f.name)}catch(e){log('Could not read thumbnail: '+e.message)}});
+function boneFor(target){const id=mapping[target];return bones.find(b=>b.uuid===id)||null}
+function savePoseSnapshot(){if(!currentRoot)return;poseSnapshot=new Map();bones.forEach(b=>poseSnapshot.set(b.uuid,{position:b.position.clone(),quaternion:b.quaternion.clone(),scale:b.scale.clone()}))}
+function restorePoseSnapshot(){if(!currentRoot||!poseSnapshot)return;bones.forEach(b=>{const p=poseSnapshot.get(b.uuid);if(p){b.position.copy(p.position);b.quaternion.copy(p.quaternion);b.scale.copy(p.scale)}});currentRoot.updateMatrixWorld(true);log('Restored the original pose saved when the model was imported.')}
+function rotateBoneChainToward(bone, child, targetWorldDir){
+ if(!bone||!child)return false;
+ currentRoot.updateMatrixWorld(true);
+ const a=new THREE.Vector3(),c=new THREE.Vector3();bone.getWorldPosition(a);child.getWorldPosition(c);
+ const dir=c.sub(a);if(dir.lengthSq()<1e-10)return false;dir.normalize();
+ const delta=new THREE.Quaternion().setFromUnitVectors(dir,targetWorldDir.clone().normalize());
+ const oldWorld=bone.getWorldQuaternion(new THREE.Quaternion());const newWorld=delta.multiply(oldWorld);
+ const parentWorld=bone.parent?bone.parent.getWorldQuaternion(new THREE.Quaternion()):new THREE.Quaternion();
+ bone.quaternion.copy(parentWorld.invert().multiply(newWorld));bone.updateMatrixWorld(true);return true;
+}
+$('autoTPose').addEventListener('click',()=>{
+ if(!currentRoot)return;
+ if(!poseSnapshot)savePoseSnapshot();
+ const lu=boneFor('leftUpperArm'),ll=boneFor('leftLowerArm'),lh=boneFor('leftHand');
+ const ru=boneFor('rightUpperArm'),rl=boneFor('rightLowerArm'),rh=boneFor('rightHand');
+ if(!lu||!ll||!ru||!rl){log('Auto T-Pose could not run: map Left/Right UpperArm and LowerArm first.');return}
+ // Target directions are in model world axes. Arm chains are aligned segment-by-segment; nonstandard rigs may need manual correction.
+ const left=new THREE.Vector3(-1,0,0),right=new THREE.Vector3(1,0,0);
+ rotateBoneChainToward(lu,ll,left);if(lh)rotateBoneChainToward(ll,lh,left);
+ rotateBoneChainToward(ru,rl,right);if(rh)rotateBoneChainToward(rl,rh,right);
+ currentRoot.updateMatrixWorld(true);
+ log('Approximate Auto T-Pose applied to both arms in the preview. Check the shoulders, elbows, and wrists; restore the original pose if twisting occurs. This is not a universal retargeting/rest-pose algorithm.');
+});
+$('resetPose').addEventListener('click',restorePoseSnapshot);
+function makeGlbWithVrm0Extension(buffer, extension, thumbnailUrl=null, thumbnailType=null){
+ const view=new DataView(buffer);if(view.getUint32(0,true)!==0x46546c67)throw new Error('GLTFExporter không trả về GLB nhị phân.');
+ let offset=12,json=null,bin=null;
+ while(offset<buffer.byteLength){const len=view.getUint32(offset,true),type=view.getUint32(offset+4,true);const bytes=new Uint8Array(buffer,offset+8,len);if(type===0x4e4f534a)json=JSON.parse(new TextDecoder().decode(bytes).replace(/[\u0000\u0020]+$/g,''));else if(type===0x004e4942)bin=bytes.slice();offset+=8+len}
+ if(!json)throw new Error('Không đọc được JSON chunk từ GLB.');
+ json.extensions=json.extensions||{};
+ if(thumbnailUrl){json.images=json.images||[];json.textures=json.textures||[];const imageIndex=json.images.length;json.images.push({uri:thumbnailUrl,mimeType:thumbnailType||'image/png',name:'VRM Meta Thumbnail'});const textureIndex=json.textures.length;json.textures.push({source:imageIndex,name:'VRM Meta Thumbnail'});extension.meta=extension.meta||{};extension.meta.texture=textureIndex;}
+ json.extensions.VRM=extension;json.extensionsUsed=Array.from(new Set([...(json.extensionsUsed||[]),'VRM']));
+ const enc=new TextEncoder();let jb=enc.encode(JSON.stringify(json));const jpad=(4-jb.length%4)%4;if(jpad){const tmp=new Uint8Array(jb.length+jpad);tmp.fill(0x20);tmp.set(jb);jb=tmp}
+ const bpad=bin?(4-bin.length%4)%4:0;const total=12+8+jb.length+(bin?8+bin.length+bpad:0);const out=new ArrayBuffer(total),dv=new DataView(out);dv.setUint32(0,0x46546c67,true);dv.setUint32(4,2,true);dv.setUint32(8,total,true);dv.setUint32(12,jb.length,true);dv.setUint32(16,0x4e4f534a,true);new Uint8Array(out,20,jb.length).set(jb);let off=20+jb.length;if(bin){dv.setUint32(off,bin.length+bpad,true);dv.setUint32(off+4,0x004e4942,true);new Uint8Array(out,off+8,bin.length).set(bin)}return out;
+}
+
+function buildVrm0MaterialProperties(json){
+ const mats=json.materials||[];
+ return mats.map((m,i)=>{
+  const pbr=m.pbrMetallicRoughness||{},base=pbr.baseColorFactor||[1,1,1,1],ext=m.extensions||{};
+  const unlit=!!ext.KHR_materials_unlit;
+  const alpha=m.alphaMode||'OPAQUE';
+  const shader=unlit?'VRM/UnlitTexture':'VRM/MToon';
+  const floats={_Cutoff:typeof m.alphaCutoff==='number'?m.alphaCutoff:0.5,_BumpScale:1,_ReceiveShadowRate:1,_ShadingGradeRate:1,_ShadeShift:0,_ShadeToony:0.9,_LightColorAttenuation:0,_IndirectLightIntensity:0.1,_RimLightingMix:0,_RimFresnelPower:1,_RimLift:0,_OutlineWidth:0};
+  const vectors={_Color:base,_ShadeColor:[0.97,0.81,0.86,1],_EmissionColor:[0,0,0,1],_RimColor:[0,0,0,1],_OutlineColor:[0,0,0,1]};
+  const textures={};
+  if(pbr.baseColorTexture)textures._MainTex=pbr.baseColorTexture.index;
+  if(pbr.metallicRoughnessTexture)textures._MetallicGlossMap=pbr.metallicRoughnessTexture.index;
+  if(m.normalTexture)textures._BumpMap=m.normalTexture.index;
+  if(m.emissiveTexture)textures._EmissionMap=m.emissiveTexture.index;
+  return {name:m.name||`Material_${i}`,shader,renderQueue:alpha==='BLEND'?3000:(alpha==='MASK'?2450:2000),floatProperties:floats,vectorProperties:vectors,textureProperties:textures,keywordMap:{},tagMap:{RenderType:alpha==='BLEND'?'Transparent':(alpha==='MASK'?'TransparentCutout':'Opaque')}};
+ });
+}
+
+function buildVrm0BlendShapeGroups(json){
+ const groups=new Map();const nodes=json.nodes||[],meshes=json.meshes||[];
+ nodes.forEach((node,nodeIndex)=>{if(node.mesh===undefined)return;const mesh=meshes[node.mesh];if(!mesh)return;(mesh.primitives||[]).forEach(prim=>{
+  const names=(mesh.extras&&mesh.extras.targetNames)||(prim.extras&&prim.extras.targetNames)||[];const targets=prim.targets||[];
+  targets.forEach((_,targetIndex)=>{const name=names[targetIndex]||`Morph_${targetIndex+1}`;if(!groups.has(name))groups.set(name,[]);groups.get(name).push({mesh:nodeIndex,index:targetIndex,weight:100});});
+ });});
+ return [...groups.entries()].map(([name,binds])=>({name,presetName:'unknown',binds,materialValues:[]}));
+}
+function validateVrm0Glb(buffer){
+ const errors=[],warnings=[];try{const dv=new DataView(buffer);if(dv.getUint32(0,true)!==0x46546c67)throw Error('Invalid GLB magic number');if(dv.getUint32(4,true)!==2)errors.push('GLB version must be 2');if(dv.getUint32(8,true)!==buffer.byteLength)errors.push('GLB total length mismatch');let off=12,j=null;while(off<buffer.byteLength){if(off+8>buffer.byteLength){errors.push('Missing chunk header');break}const len=dv.getUint32(off,true),type=dv.getUint32(off+4,true);if(off+8+len>buffer.byteLength){errors.push('Chunk exceeds file length');break}if(type===0x4e4f534a)j=JSON.parse(new TextDecoder().decode(new Uint8Array(buffer,off+8,len)).replace(/[\u0000\u0020]+$/g,''));off+=8+len;}if(!j)errors.push('Missing JSON chunk');else{const vrm=j.extensions&&j.extensions.VRM;if(!vrm)errors.push('Missing extensions.VRM');else{if(vrm.specVersion!=='0.0')errors.push('VRM specVersion is not 0.0');if(vrm.meta&&vrm.meta.texture!==undefined&&(!Number.isInteger(vrm.meta.texture)||vrm.meta.texture<0||vrm.meta.texture>=(j.textures||[]).length))errors.push('Invalid metadata thumbnail texture index');if(!vrm.meta||!vrm.humanoid||!vrm.firstPerson||!vrm.blendShapeMaster||!vrm.secondaryAnimation||!Array.isArray(vrm.materialProperties))errors.push('Missing required VRM 0.x components');const nodes=j.nodes||[],meshes=j.meshes||[];for(const hb of (vrm.humanoid?.humanBones||[])){if(!Number.isInteger(hb.node)||hb.node<0||hb.node>=nodes.length)errors.push(`Invalid humanoid node: ${hb.bone}`)}for(const g of (vrm.blendShapeMaster?.blendShapeGroups||[]))for(const b of (g.binds||[])){if(!Number.isInteger(b.mesh)||b.mesh<0||b.mesh>=nodes.length)errors.push(`Invalid BlendShape mesh/node binding: ${g.name}`);else{const mi=nodes[b.mesh].mesh;if(mi===undefined||!meshes[mi]||(meshes[mi].primitives||[]).every(p=>!p.targets||!p.targets[b.index]))errors.push(`BlendShape target does not exist: ${g.name}/${b.index}`)}}if((vrm.secondaryAnimation?.boneGroups||[]).length===0)warnings.push('No Secondary Bone Groups configured; hair/clothing will not have spring physics');if((vrm.secondaryAnimation?.colliderGroups||[]).length===0)warnings.push('No Collider Groups configured');for(const bg of (vrm.secondaryAnimation?.boneGroups||[])){for(const bi of (bg.bones||[]))if(!Number.isInteger(bi)||bi<0||bi>=nodes.length)errors.push('Invalid Secondary bone index: '+bi);for(const ci of (bg.colliderGroups||[]))if(!Number.isInteger(ci)||ci<0||ci>=(vrm.secondaryAnimation?.colliderGroups||[]).length)errors.push('Invalid Secondary colliderGroups index: '+ci)}for(const cg of (vrm.secondaryAnimation?.colliderGroups||[]))if(!Number.isInteger(cg.node)||cg.node<0||cg.node>=nodes.length)errors.push('Invalid Collider node index: '+cg.node);}}
+ }catch(e){errors.push('Could not read or validate GLB: '+e.message)}return {errors,warnings};
+}
+
+$('addSpring').addEventListener('click',()=>{const root=bones.find(b=>b.uuid===$('springRoot').value);if(!root){log('Select a SpringBone root first.');return}const all=descendantsBoneNames(root);if(!all.length){log('No bones found in the selected hierarchy.');return}configuredSpringGroups.push({label:root.name||'SpringBone',boneNames:all,stiffness:Math.max(0,Number($('springStiff').value)||0),drag:Math.min(1,Math.max(0,Number($('springDrag').value)||0)),radius:Math.max(0,Number($('springRadius').value)||0)});renderPhysicsLists();log('Secondary Bone Group added.');});
+$('addCollider').addEventListener('click',()=>{const node=bones.find(b=>b.uuid===$('colliderNode').value);if(!node){log('Select a Collider node first.');return}configuredColliderGroups.push({label:node.name||'Collider',nodeName:node.name,offset:{x:Number($('colX').value)||0,y:Number($('colY').value)||0,z:Number($('colZ').value)||0},radius:Math.max(0.001,Number($('colR').value)||0.08)});renderPhysicsLists();log('Collider Group added.');});
+$('runValidator').addEventListener('click',()=>{if(!currentRoot){$('validatorResult').textContent='No model loaded.';return}const problems=[];if(!mapping.hips)problems.push('Hips is not mapped');if(!mapping.head)problems.push('Head is not mapped');$('validatorResult').textContent=problems.length?'Pre-export warning: '+problems.join('; '):'Basic check passed: hips and head are mapped. Full VRM validation will run after the VRM package is created.';});
+$('exportVrm').addEventListener('click',async()=>{
+ if(!currentRoot){log('Export bị hủy: chưa nạp model.');return}
+ const required=['hips','spine','head','leftUpperArm','leftLowerArm','leftHand','rightUpperArm','rightLowerArm','rightHand','leftUpperLeg','leftLowerLeg','leftFoot','rightUpperLeg','rightLowerLeg','rightFoot'];
+ const missing=required.filter(k=>!mapping[k]||!bones.some(b=>b.uuid===mapping[k]));
+ if(missing.length){const msg='Cannot export VRM 0.x. Required bones are missing or unmapped: '+missing.join(', ')+'. Fix the mapping before exporting.';log(msg);$('validatorResult').textContent=msg;return}
+ const duplicateNames=new Set();const nodeIndices={};
+ $('downloadReady').style.display='none';$('exportVrm').disabled=true;log('Building GLB and adding the VRM 0.x extension…');
+ try{
+  const exporter=new GLTFExporter();
+  const glb=await exporter.parseAsync(currentRoot,{binary:true,trs:false,onlyVisible:false,includeCustomExtensions:true});
+  const view=new DataView(glb);let off=12,json=null,bin=null;
+  while(off<glb.byteLength){const len=view.getUint32(off,true),type=view.getUint32(off+4,true),bytes=new Uint8Array(glb,off+8,len);if(type===0x4e4f534a)json=JSON.parse(new TextDecoder().decode(bytes).replace(/[\u0000\u0020]+$/g,''));else if(type===0x004e4942)bin=bytes.slice();off+=8+len}
+  if(!json)throw new Error('Could not read the intermediate GLB.');
+  // Honest provenance: this file is authored by Aster VRM Workshop, not UniGLTF/UniVRM.
+  json.asset=json.asset||{};json.asset.generator='Aster VRM Workshop v8';
+  const nodeMap=new Map();(json.nodes||[]).forEach((n,i)=>{if(n.name){if(!nodeMap.has(n.name))nodeMap.set(n.name,[]);nodeMap.get(n.name).push(i)}});
+  const humanBones=[];
+  for(const [target] of humanoid){const bone=bones.find(b=>b.uuid===mapping[target]);if(!bone)continue;const hits=nodeMap.get(bone.name)||[];if(hits.length===1)humanBones.push({bone:target,node:hits[0]});else if(hits.length>1)duplicateNames.add(bone.name)}
+  if(duplicateNames.size)throw new Error('Duplicate bone names prevent safe node mapping: '+Array.from(duplicateNames).join(', ')+'. Rename the duplicate bones in a 3D tool and try again.');
+  const head=humanBones.find(x=>x.bone==='head');
+  const ext={specVersion:'0.0',exporterVersion:'Aster VRM Workshop v8',meta:{title:$('avatarName').value.trim()||(currentFile?.name||'Avatar').replace(/\.[^.]+$/,''),version:'1.0',author:$('avatarAuthor').value.trim(),contactInformation:'',reference:'',allowedUserName:'Everyone',violentUssageName:'Allow',sexualUssageName:'Allow',commercialUssageName:'Allow',otherPermissionUrl:'',licenseName:'Redistribution_Prohibited',otherLicenseUrl:''},humanoid:{humanBones,armStretch:0.05,legStretch:0.05,upperArmTwist:0.5,lowerArmTwist:0.5,upperLegTwist:0.5,lowerLegTwist:0.5, feetSpacing:0,hasTranslationDoF:false},firstPerson:{firstPersonBone:head?.node??humanBones[0].node,firstPersonBoneOffset:{x:0,y:0.06,z:0},meshAnnotations:[],lookAtTypeName:'Bone',lookAtHorizontalInner:{curve:[0,0,0,0],xRange:90,yRange:10},lookAtHorizontalOuter:{curve:[0,0,0,0],xRange:90,yRange:10},lookAtVerticalDown:{curve:[0,0,0,0],xRange:90,yRange:10},lookAtVerticalUp:{curve:[0,0,0,0],xRange:90,yRange:10}},blendShapeMaster:{blendShapeGroups:buildVrm0BlendShapeGroups(json)},secondaryAnimation:{boneGroups:configuredSpringGroups.map(g=>({comment:g.label,stiffiness:g.stiffness,gravityPower:0,gravityDir:{x:0,y:-1,z:0},dragForce:g.drag,hitRadius:g.radius,bones:g.boneNames.map(n=>{const h=nodeMap.get(n)||[];if(h.length!==1)throw new Error('Could not uniquely map Secondary bone: '+n);return h[0]}),colliderGroups:configuredColliderGroups.map((_,i)=>i)})),colliderGroups:configuredColliderGroups.map(g=>{const h=nodeMap.get(g.nodeName)||[];if(h.length!==1)throw new Error('Could not uniquely map Collider node: '+g.nodeName);return {node:h[0],colliders:[{offset:g.offset,radius:g.radius}]}})},materialProperties:buildVrm0MaterialProperties(json)};
+  const result=makeGlbWithVrm0Extension(glb,ext,thumbnailDataUrl,thumbnailMime);const validation=validateVrm0Glb(result);if(validation.errors.length)throw new Error('VRM Structure Validator blocked the download: '+validation.errors.join(' | '));if(validation.warnings.length)log('Validator cảnh báo: '+validation.warnings.join(' | '));const blob=new Blob([result],{type:'model/gltf-binary'});if(!blob.size)throw new Error('File VRM tạo ra có 0 byte.');if(window.__asterVrmObjectUrl)URL.revokeObjectURL(window.__asterVrmObjectUrl);const url=URL.createObjectURL(blob);window.__asterVrmObjectUrl=url;const filename=(currentFile?.name||'avatar').replace(/\.[^.]+$/,'')+'_VRM0.vrm';const link=$('downloadLink');link.href=url;link.download=filename;link.textContent='Download VRM 0.x ('+blob.size.toLocaleString()+' bytes)';link.setAttribute('type','application/octet-stream');$('downloadInfo').textContent='Created '+filename+' · '+blob.size.toLocaleString()+' bytes. Nếu tải tự động không bắt đầu, chạm liên kết xanh này. URL tải được giữ đến khi nạp model mới hoặc xuất lại.';$('downloadReady').style.display='block';$('downloadReady').scrollIntoView({behavior:'smooth',block:'center'});$('validatorResult').textContent='VRM Structure Validator: no blocking errors found.';try{link.click();log('Automatic download requested. If your browser does not download the file, use the manual download link shown in Section 1.')}catch(downloadErr){log('Chrome không khởi chạy tải tự động: '+downloadErr.message+'. Dùng liên kết tải thủ công ở Mục 1.')}
+  log('Created VRM 0.x file ('+blob.size+' bytes). Chạm nút “Download VRM 0.x” trong khung bên dưới. Nếu Chrome chặn tải tự động, liên kết tải thủ công vẫn còn hiển thị.');
+ }catch(err){$('downloadReady').style.display='none';$('validatorResult').textContent='VRM export failed: '+(err.message||err);log('VRM export failed: '+(err.message||err));}finally{$('exportVrm').disabled=false}
+});
+$('analyze').addEventListener('click',()=>{if(!currentRoot)return;gather(currentRoot);populatePhysicsNodeSelects();autoMap();renderShapes();updateChecks();log('Bone-name mapping suggestions recalculated. Review the mapping manually.')});
+$('runAutoMapping').addEventListener('click',()=>{if(!currentRoot){log('Please nạp model trước khi chạy Auto Mapping.');return}gather(currentRoot);populatePhysicsNodeSelects();autoMap();log('Auto Mapping complete: '+Object.values(mapping).filter(Boolean).length+'/'+humanoid.length+' bone slots. Generic numbered names such as Finger01 still require rig-specific conventions.')});
+$('clearMapping').addEventListener('click',()=>{mapping={};renderMapping();log('All mappings cleared. You can now assign them manually.')});
+$('frame').addEventListener('click',()=>{if(currentRoot)frameRoot(currentRoot)});
+$('wire').addEventListener('click',()=>{if(!currentRoot)return;wire=!wire;currentRoot.traverse(o=>{if(o.isMesh)for(const m of (Array.isArray(o.material)?o.material:[o.material]))m.wireframe=wire});$('wire').textContent=wire?'Disable Wireframe':'Wireframe'});
+$('reset').addEventListener('click',()=>{configuredSpringGroups=[];configuredColliderGroups=[];renderPhysicsLists();$('validatorResult').textContent='Not yet chạy kiểm tra.';$('downloadReady').style.display='none';$('applyMaterial').disabled=true;$('applyTexture').disabled=true;$('applyColor').disabled=true;disposeRoot();refreshTextureTargets();bones=[];morphs=[];mapping={};$('file').value='';$('analyze').disabled=true;$('frame').disabled=true;$('wire').disabled=true;$('downloadReport').disabled=true;$('exportVrm').disabled=true;$('rotate180').disabled=true;$('resetRot').disabled=true;$('resetScale').disabled=true;$('deleteMesh').disabled=true;$('autoTPose').disabled=true;$('resetPose').disabled=true;poseSnapshot=null;$('modelState').textContent='No model loaded';$('meshDeleteTarget').innerHTML='<option value="">Import a model trước</option>';$('modelScale').value='1';$('rotX').value='0';$('rotY').value='0';$('rotZ').value='0';$('boneCount').textContent='0 bones';$('shapeCount').textContent='0';$('mapping').textContent='Import a model rồi nhấn “Analyze Bones”.';$('shapes').textContent='Not analyzed yet.';$('checks').textContent='No results yet.';log('Model cleared.')});
+$('downloadReport').addEventListener('click',()=>{
+ if(!currentRoot)return;
+ const report={tool:'Aster VRM Workshop v8.7',sourceFile:currentFile?.name||null,createdAt:new Date().toISOString(),notice:'Mapping report only; this is NOT a VRM file and does not certify compatibility.',bones:bones.map(b=>({name:b.name,uuid:b.uuid,parent:b.parent?.name||null})),humanoidMapping:Object.fromEntries(humanoid.map(([target])=>[target,bones.find(b=>b.uuid===mapping[target])?.name||null])),morphTargets:morphs};
+ const blob=new Blob([JSON.stringify(report,null,2)],{type:'application/json'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=(currentFile?.name||'model').replace(/\.[^.]+$/,'')+'_mapping_report.json';a.click();URL.revokeObjectURL(url);
+});
+</script>
+</body>
+</html>
